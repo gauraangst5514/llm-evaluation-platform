@@ -1,0 +1,47 @@
+# Secrets and local config
+.env
+.env.*
+!.env.example
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+htmlcov/
+.coverage
+coverage.xml
+
+# Node / Vite
+node_modules/
+frontend/dist/
+frontend/.vite/
+*.tsbuildinfo
+
+# Logs and test output
+*.log
+logs/
+test-output/
+pytest-*.xml
+
+# Model weights and large data
+*.gguf
+*.safetensors
+*.bin
+*.pt
+*.pth
+models/
+data/raw/
+data/cache/
+.cache/
+huggingface/
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+*.swp
