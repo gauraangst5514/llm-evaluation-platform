@@ -3,20 +3,16 @@ from sqlalchemy.ext.asyncio import create_async_engine
 from app.api.health import check_database
 
 
-async def test_health_endpoint_reports_shape(client):
-    """The endpoint always answers 200 and reports database state honestly.
-
-    Without a reachable Postgres the status is 'degraded' with an error string;
-    with one it is 'ok'. Either way the shape is stable for the dashboard.
-    """
+async def test_health_ok_with_database(client):
     resp = await client.get("/health")
     assert resp.status_code == 200
     body = resp.json()
-    assert set(body) == {"status", "version", "database", "database_error"}
-    if body["database"] == "ok":
-        assert body["status"] == "ok" and body["database_error"] is None
-    else:
-        assert body["status"] == "degraded" and body["database_error"]
+    assert body == {
+        "status": "ok",
+        "version": body["version"],
+        "database": "ok",
+        "database_error": None,
+    }
 
 
 async def test_check_database_reports_unreachable_host():

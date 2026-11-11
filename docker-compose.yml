@@ -31,8 +31,12 @@ services:
     extra_hosts:
       - "host.docker.internal:host-gateway"
     volumes:
-      - ./backend/app:/app/app   # live reload of app code during development
-    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+      - ./backend/app:/app/app           # live reload of app code during development
+      - ./backend/alembic:/app/alembic   # so new migrations apply without a rebuild
+    # Apply migrations, then serve. Dataset registry is synced by the app on startup.
+    command: >
+      sh -c "alembic upgrade head &&
+             uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload"
 
   web:
     build: ./frontend

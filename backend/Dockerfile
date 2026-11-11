@@ -10,6 +10,8 @@ COPY pyproject.toml ./
 # Install deps first so the layer is cached when only app code changes.
 RUN pip install --upgrade pip && pip install .
 
+COPY alembic.ini ./
+COPY alembic ./alembic
 COPY app ./app
 
 EXPOSE 8000
