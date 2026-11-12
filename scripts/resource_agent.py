@@ -51,9 +51,9 @@ def find_process(name_substring: str) -> psutil.Process | None:
             cmd = " ".join(p.info["cmdline"] or [])
             if "resource_agent" in cmd:
                 continue
-            if name_substring in (p.info["name"] or "") or name_substring in cmd:
-                if best is None or p.create_time() > best.create_time():
-                    best = p
+            matches = name_substring in (p.info["name"] or "") or name_substring in cmd
+            if matches and (best is None or p.create_time() > best.create_time()):
+                best = p
         except (psutil.NoSuchProcess, psutil.AccessDenied):
             continue
     return best
@@ -142,11 +142,7 @@ def make_handler(sampler: Sampler):
             since_ts = None
             if "since" in q:
                 try:
-                    since_ts = (
-                        datetime.fromisoformat(q["since"][0])
-                        .astimezone(UTC)
-                        .timestamp()
-                    )
+                    since_ts = datetime.fromisoformat(q["since"][0]).astimezone(UTC).timestamp()
                 except ValueError:
                     since_ts = None
             data = sampler.peak_since(since_ts)
@@ -169,9 +165,7 @@ def make_handler(sampler: Sampler):
                 files = [f for f in model_files(path) if os.path.exists(f)]
                 if files:
                     data["model_file_bytes"] = sum(os.path.getsize(f) for f in files)
-                    data["model_files"] = [
-                        {"path": f, "bytes": os.path.getsize(f)} for f in files
-                    ]
+                    data["model_files"] = [{"path": f, "bytes": os.path.getsize(f)} for f in files]
                     data["file_reason"] = None
                 else:
                     data["file_reason"] = f"model file not found on this host: {path}"
