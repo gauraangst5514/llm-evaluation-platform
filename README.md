@@ -4,7 +4,9 @@ Serves open LLMs behind OpenAI-compatible endpoints (llama.cpp `llama-server` lo
 
 It is also the harness for a planned study: *does GGUF quantization hurt Indic languages more than English, and does the drop track tokenizer fertility?*
 
-**Status: Milestone 3 (all five evaluation dimensions produce real metrics; compare and CSV export endpoints).** See [PROJECT_SPEC.md](PROJECT_SPEC.md) for the full plan and milestones. No evaluation results exist yet; nothing in this repo reports numbers that were not produced by a real run.
+**Status: Milestone 4 (React dashboard: runs, run detail, compare).**
+
+![Compare page](docs/screenshot-compare.png) See [PROJECT_SPEC.md](PROJECT_SPEC.md) for the full plan and milestones. No evaluation results exist yet; nothing in this repo reports numbers that were not produced by a real run.
 
 ## Quick start
 
@@ -13,7 +15,7 @@ cp .env.example .env        # defaults work for local Docker
 docker compose up --build
 ```
 
-- Web (health page): http://localhost:5173
+- Dashboard: http://localhost:5173 (runs table, new-run form, run detail with live progress, compare page)
 - API: http://localhost:8000/health and http://localhost:8000/docs
 - Postgres: localhost:5432 (user/db `llmeval`)
 
@@ -28,7 +30,7 @@ curl -X POST localhost:8000/models -H 'content-type: application/json' -d '{
 
 Model servers are **not** bundled. They run on the host (or a remote GPU box) and are registered by URL: see [scripts/start_llama_server.md](scripts/start_llama_server.md) (macOS, GGUF) and [scripts/start_vllm_server.md](scripts/start_vllm_server.md) (Kaggle/Colab/Modal).
 
-Launch a run from the UI (M4), the API, or the CLI:
+Launch a run from the dashboard, the API, or the CLI:
 
 ```bash
 python scripts/run_pilot.py --model-id 1 --dataset global_mmlu_en --dataset global_mmlu_hi --n-items 50
@@ -76,7 +78,7 @@ npm install && npm run dev                   # proxies /api to http://localhost:
 
 ```
 backend/   FastAPI app (app/), tests/, Alembic migrations (from M1)
-frontend/  React + Vite + TypeScript dashboard
+frontend/  React + Vite + TypeScript dashboard (Recharts, TanStack Query, React Router)
 scripts/   how to start llama-server / vLLM, CLI to launch runs
 results/   exported CSV/JSON of real runs (committed on purpose)
 docs/      write-ups, e.g. the quantization pilot
