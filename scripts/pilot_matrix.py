@@ -201,19 +201,35 @@ def main() -> None:
     ap.add_argument("--poll", type=float, default=15)
     ap.add_argument("--download-timeout", type=float, default=3600)
     ap.add_argument("--delete-after", action="store_true", help="delete each GGUF after its runs")
+    ap.add_argument(
+        "--skip-existing",
+        action="store_true",
+        help="skip (quant, language) cells whose results/<name>_metrics.csv already exists",
+    )
     args = ap.parse_args()
 
     datasets = {d["language"]: d for d in http("GET", f"{args.api}/datasets") or []}  # type: ignore[union-attr]
     stem = args.model_name.lower().replace("-instruct", "")
     summary = []
     for quant in args.quants:
-        log(f"=== {quant} ===")
+        todo = [
+            lang
+            for lang in args.languages
+            if not (
+                args.skip_existing
+                and (ROOT / "results" / f"pilot_{stem}_{quant.lower()}_{lang}_metrics.csv").exists()
+            )
+        ]
+        if not todo:
+            log(f"=== {quant} === all languages already exported, skipping")
+            continue
+        log(f"=== {quant} === languages: {', '.join(todo)}")
         proc = start_server(args, quant)
         wait_healthy(args.server, args.download_timeout)
         props = http("GET", f"{args.server}/props") or {}
         model_id = ensure_model(args, quant, props.get("build_info"))
         log(f"model id {model_id}, model_path {props.get('model_path')}")
-        for lang in args.languages:
+        for lang in todo:
             r = run_one(args, model_id, datasets[lang])
             name = f"pilot_{stem}_{quant.lower()}_{lang}"
             if r["status"] == "completed":
