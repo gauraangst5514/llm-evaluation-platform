@@ -4,7 +4,7 @@ Serves open LLMs behind OpenAI-compatible endpoints (llama.cpp `llama-server` lo
 
 It is also the harness for a planned study: *does GGUF quantization hurt Indic languages more than English, and does the drop track tokenizer fertility?*
 
-**Status: Milestone 1 (data model + models/datasets API).** See [PROJECT_SPEC.md](PROJECT_SPEC.md) for the full plan and milestones. No evaluation results exist yet; nothing in this repo reports numbers that were not produced by a real run.
+**Status: Milestone 2 (streaming client, run executor, per-item results from a real `llama-server`).** See [PROJECT_SPEC.md](PROJECT_SPEC.md) for the full plan and milestones. No evaluation results exist yet; nothing in this repo reports numbers that were not produced by a real run.
 
 ## Quick start
 
@@ -26,7 +26,22 @@ curl -X POST localhost:8000/models -H 'content-type: application/json' -d '{
   "quantization": "Q4_K_M", "params_b": 7.6}'
 ```
 
-Model servers are **not** bundled. They run on the host (or a remote GPU box) and are registered by URL. Setup notes will live in `scripts/`.
+Model servers are **not** bundled. They run on the host (or a remote GPU box) and are registered by URL: see [scripts/start_llama_server.md](scripts/start_llama_server.md) (macOS, GGUF) and [scripts/start_vllm_server.md](scripts/start_vllm_server.md) (Kaggle/Colab/Modal).
+
+Launch a run from the UI (M4), the API, or the CLI:
+
+```bash
+python scripts/run_pilot.py --model-id 1 --dataset global_mmlu_en --dataset global_mmlu_hi --n-items 50
+```
+
+## How a run works
+
+1. `POST /runs` stores the run as `pending` and starts an asyncio task in the API process.
+2. The dataset's fixed subset is materialised once (seeded sample of `sample_id`s, shared across the en/hi/bn parallel group) and stored on the dataset row.
+3. Each item is sent as a chat completion with `temperature=0`, `stream=true` and `stream_options.include_usage`; TTFT is measured at the first content delta, token counts come from the server's usage block or are stored as null.
+4. Bounded concurrency, per-request timeout, one retry on transient failures (timeouts, connection errors, 5xx, 429). 4xx errors such as context overflow are recorded on the item and not retried.
+5. Answers are parsed strictly (a single option letter). Unparseable replies count as wrong and are reported; failed requests are not scored. If more than 10% of requests fail the run is `failed`, not "low accuracy".
+6. Runs can be cancelled; runs interrupted by an API restart are marked `failed` on startup rather than left `running` forever.
 
 ## Development without Docker
 
@@ -35,7 +50,7 @@ Model servers are **not** bundled. They run on the host (or a remote GPU box) an
 cd backend
 uv venv --python 3.11 .venv && uv pip install --python .venv/bin/python -e ".[dev]"
 .venv/bin/uvicorn app.main:app --reload      # needs a Postgres on localhost:5432
-.venv/bin/pytest && .venv/bin/ruff check .   # tests need Postgres; they use a separate llmeval_test database
+.venv/bin/pytest && .venv/bin/ruff check .   # tests need Postgres (separate llmeval_test db); the run tests use an in-process mock OpenAI server
 .venv/bin/alembic revision --autogenerate -m "describe change"   # after editing app/db/models.py
 
 # frontend

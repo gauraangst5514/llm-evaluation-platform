@@ -4,10 +4,11 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import datasets, health, models
+from app.api import datasets, health, models, runs
 from app.config import get_settings
 from app.datasets.registry import sync_registry
 from app.db.session import make_engine, make_session_factory
+from app.services.run_executor import RunExecutor
 
 log = logging.getLogger(__name__)
 
@@ -24,9 +25,17 @@ async def lifespan(app: FastAPI):
             log.info("Dataset registry synced (%d new).", inserted)
         except Exception as exc:  # noqa: BLE001 - startup must not die if the DB is late
             log.warning("Dataset registry sync skipped: %s", exc)
+    app.state.executor = RunExecutor(app.state.session_factory)
+    try:
+        n = await app.state.executor.fail_orphans()
+        if n:
+            log.warning("Marked %d interrupted run(s) as failed.", n)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Orphan-run cleanup skipped: %s", exc)
     try:
         yield
     finally:
+        await app.state.executor.shutdown()
         await app.state.engine.dispose()
 
 
@@ -42,6 +51,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router)
     app.include_router(models.router)
     app.include_router(datasets.router)
+    app.include_router(runs.router)
     return app
 
 
