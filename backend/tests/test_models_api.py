@@ -83,3 +83,18 @@ async def test_delete_model_with_runs_is_refused(client):
     resp = await client.delete("/models/1")
     assert resp.status_code == 409
     assert "1 run" in resp.json()["detail"]
+
+
+async def test_patch_model_partial_update(client):
+    created = (await client.post("/models", json=MODEL)).json()
+    resp = await client.patch(
+        f"/models/{created['id']}",
+        json={"resource_agent_url": "http://host.docker.internal:9108", "notes": None},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["resource_agent_url"] == "http://host.docker.internal:9108"
+    assert body["notes"] is None and body["hf_repo"] == MODEL["hf_repo"]  # untouched fields stay
+    bad = await client.patch(f"/models/{created['id']}", json={"endpoint_url": "nope"})
+    assert bad.status_code == 422
+    assert (await client.patch("/models/999", json={"notes": "x"})).status_code == 404

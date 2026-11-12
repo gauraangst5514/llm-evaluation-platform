@@ -52,3 +52,18 @@ curl -X POST localhost:8000/models -H 'content-type: application/json' -d '{
 One `models` row per quantization: the comparison in the dashboard is between rows, so keep `name` identical and vary `quantization`. Record the llama-server version and flags in `notes`; resource numbers depend on them.
 
 If the API runs outside Docker, use `http://127.0.0.1:8080` instead of `host.docker.internal`.
+
+## Resource usage (optional but recommended)
+
+The API cannot see host processes from inside Docker, so a small agent on the Mac samples llama-server's memory and reports the model file size:
+
+```bash
+uv run --with psutil scripts/resource_agent.py --process llama-server --port 9108
+# then tell the platform where it is:
+curl -X PATCH localhost:8000/models/<id> -H 'content-type: application/json' \
+  -d '{"resource_agent_url": "http://host.docker.internal:9108"}'
+```
+
+Without an agent the resources dimension stores null values with the reason, never an estimate.
+
+Caveat on Apple Silicon: llama.cpp maps the GGUF with `mmap` and runs on Metal with unified memory, so the process RSS undercounts the memory actually pinned for the model. Treat `peak_rss_bytes` on macOS as a lower bound and report `model_file_bytes` alongside it. On Linux/NVIDIA the agent also reads `nvidia-smi`, which is the number that matters there.

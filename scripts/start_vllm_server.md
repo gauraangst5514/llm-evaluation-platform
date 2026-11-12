@@ -35,15 +35,27 @@ Keep `concurrency` modest (2 to 4) through a tunnel; latency numbers will includ
 ```python
 # modal_vllm.py — minimal sketch; see Modal's vLLM example for a production version
 import modal
+
 app = modal.App("llm-eval-vllm")
 image = modal.Image.debian_slim().pip_install("vllm")
+
 
 @app.function(image=image, gpu="A10G", timeout=3600)
 @modal.web_server(8000)
 def serve():
     import subprocess
-    subprocess.Popen(["python", "-m", "vllm.entrypoints.openai.api_server",
-                      "--model", "Qwen/Qwen2.5-7B-Instruct", "--port", "8000"])
+
+    subprocess.Popen(
+        [
+            "python",
+            "-m",
+            "vllm.entrypoints.openai.api_server",
+            "--model",
+            "Qwen/Qwen2.5-7B-Instruct",
+            "--port",
+            "8000",
+        ]
+    )
 ```
 
 `modal serve modal_vllm.py` prints a public URL; register it as above with `"backend": "vllm"`.

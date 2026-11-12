@@ -117,6 +117,9 @@ async def load_items(
                 question=row[f["question"]],
                 options=tuple(row[c] for c in f["options"]),
                 answer=str(row[f["answer"]]).strip().upper(),
+                subject_category=row.get(f.get("subject_category", ""))
+                if f.get("subject_category")
+                else None,
             )
         )
     return items

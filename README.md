@@ -4,7 +4,7 @@ Serves open LLMs behind OpenAI-compatible endpoints (llama.cpp `llama-server` lo
 
 It is also the harness for a planned study: *does GGUF quantization hurt Indic languages more than English, and does the drop track tokenizer fertility?*
 
-**Status: Milestone 2 (streaming client, run executor, per-item results from a real `llama-server`).** See [PROJECT_SPEC.md](PROJECT_SPEC.md) for the full plan and milestones. No evaluation results exist yet; nothing in this repo reports numbers that were not produced by a real run.
+**Status: Milestone 3 (all five evaluation dimensions produce real metrics; compare and CSV export endpoints).** See [PROJECT_SPEC.md](PROJECT_SPEC.md) for the full plan and milestones. No evaluation results exist yet; nothing in this repo reports numbers that were not produced by a real run.
 
 ## Quick start
 
@@ -42,6 +42,20 @@ python scripts/run_pilot.py --model-id 1 --dataset global_mmlu_en --dataset glob
 4. Bounded concurrency, per-request timeout, one retry on transient failures (timeouts, connection errors, 5xx, 429). 4xx errors such as context overflow are recorded on the item and not retried.
 5. Answers are parsed strictly (a single option letter). Unparseable replies count as wrong and are reported; failed requests are not scored. If more than 10% of requests fail the run is `failed`, not "low accuracy".
 6. Runs can be cancelled; runs interrupted by an API restart are marked `failed` on startup rather than left `running` forever.
+
+## The five dimensions
+
+Each is a class in `backend/app/evals/` implementing `Eval.run(ctx) -> list[Metric]`; the executor runs the requested ones after the per-item pass and stores their metrics. Anything that cannot be measured is stored as `null` with the reason in `extra_json`.
+
+| Dimension | What is measured | How |
+|---|---|---|
+| accuracy | accuracy with 95% Wilson CI, unparseable rate, request-error rate, per-category and per-subject breakdown, answer-letter distribution | from the greedy MCQ pass; strict single-letter parsing |
+| latency | TTFT and total latency P50/P95 at the run's concurrency; prefill tokens/s; decode tokens/s from 5 sequential 128-token generation probes | streamed responses; token counts only from the server's usage block |
+| resources | peak RSS of the server process, peak GPU memory, model file size | host-side `scripts/resource_agent.py` (psutil, nvidia-smi); null without it |
+| tokenizer | fertility (tokens/word), tokens/char, decode(encode(x)) == x pass rate | the model's own `AutoTokenizer` on the exact question+option text of the run |
+| reliability | MCQ valid-format rate; JSON-schema valid rate on 5 probes; consistency over 3 repeats at temperature 0.7 (unanimous rate and mean pairwise agreement) | extra requests after the accuracy pass |
+
+Comparison and export: `GET /compare?run_ids=1,2` returns metrics side by side grouped by dimension, name and language; `GET /export/{run_id}.csv?kind=items|metrics` downloads a run.
 
 ## Development without Docker
 

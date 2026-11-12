@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.api import datasets, health, models, runs
+from app.api import compare, datasets, health, models, runs
 from app.config import get_settings
 from app.datasets.registry import sync_registry
 from app.db.session import make_engine, make_session_factory
@@ -52,6 +52,7 @@ def create_app() -> FastAPI:
     app.include_router(models.router)
     app.include_router(datasets.router)
     app.include_router(runs.router)
+    app.include_router(compare.router)
     return app
 
 

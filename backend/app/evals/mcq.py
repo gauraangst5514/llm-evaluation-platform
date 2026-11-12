@@ -32,6 +32,7 @@ class MCQItem:
     question: str
     options: tuple[str, str, str, str]
     answer: str  # "A".."D"
+    subject_category: str | None = None
 
 
 def build_messages(item: MCQItem) -> list[ChatMessage]:

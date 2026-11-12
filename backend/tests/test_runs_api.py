@@ -22,6 +22,8 @@ def fake_source():
 
 def answer_from_prompt(user_msg: str) -> str:
     """The fake data encodes the answer as 'ABCD'[i % 4] where i is the question index."""
+    if "question " not in user_msg:  # latency/reliability probes
+        return "A"
     i = int(user_msg.split("question ")[1].split("\n")[0])
     return "ABCD"[i % 4]
 
@@ -65,6 +67,7 @@ async def test_run_completes_and_stores_items(client, fake_source):
                 "n_items": 10,
                 "concurrency": 3,
                 "seed": 7,
+                "dimensions": ["accuracy"],
             },
         )
         assert resp.status_code == 202, resp.text
@@ -85,7 +88,8 @@ async def test_run_completes_and_stores_items(client, fake_source):
     assert run["model_name"] == "mock" and run["language"] == "hi"
     assert run["config_json"]["prompt_template"] == "mcq-v1"
     assert run["config_json"]["resolved_concurrency"] == 3
-    assert run["metrics"] == []  # dimensions arrive in M3
+    names = {m["name"] for m in run["metrics"]}
+    assert "accuracy" in names and all(m["dimension"] == "accuracy" for m in run["metrics"])
 
     page = (await client.get(f"/runs/{run_id}/items", params={"page_size": 4})).json()
     assert page["total"] == 10 and len(page["items"]) == 4 and page["page"] == 1
@@ -128,7 +132,13 @@ async def test_transient_failure_is_retried_once(client, fake_source):
         model_id, dataset_id = await seed(client, srv.base_url)
         resp = await client.post(
             "/runs",
-            json={"model_id": model_id, "dataset_id": dataset_id, "n_items": 3, "concurrency": 1},
+            json={
+                "model_id": model_id,
+                "dataset_id": dataset_id,
+                "n_items": 3,
+                "concurrency": 1,
+                "dimensions": ["accuracy"],
+            },
         )
         run = await wait_terminal(client, resp.json()["id"])
     assert run["status"] == "completed" and run["progress"]["n_errors"] == 0

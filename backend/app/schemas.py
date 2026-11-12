@@ -18,6 +18,9 @@ class ModelCreate(BaseModel):
     quantization: str | None = Field(default=None, max_length=50, examples=["Q4_K_M"])
     params_b: float | None = Field(default=None, gt=0)
     notes: str | None = None
+    resource_agent_url: str | None = Field(
+        default=None, max_length=500, examples=["http://host.docker.internal:9108"]
+    )
 
     @field_validator("endpoint_url")
     @classmethod
@@ -26,6 +29,20 @@ class ModelCreate(BaseModel):
         if parsed.scheme not in ("http", "https") or not parsed.netloc:
             raise ValueError("endpoint_url must be an absolute http(s) URL")
         return v.strip().rstrip("/")
+
+
+class ModelUpdate(BaseModel):
+    """Partial update; only provided fields change."""
+
+    hf_repo: str | None = Field(default=None, max_length=200)
+    endpoint_url: str | None = Field(default=None, max_length=500)
+    params_b: float | None = Field(default=None, gt=0)
+    notes: str | None = None
+    resource_agent_url: str | None = Field(default=None, max_length=500)
+
+    _validate_url = field_validator("endpoint_url")(
+        lambda cls, v: None if v is None else ModelCreate.validate_and_normalise_url(v)
+    )
 
 
 class ModelRead(BaseModel):
@@ -39,6 +56,7 @@ class ModelRead(BaseModel):
     quantization: str | None
     params_b: float | None
     notes: str | None
+    resource_agent_url: str | None
     created_at: datetime
 
 
@@ -138,6 +156,25 @@ class ResultItemRead(BaseModel):
     output_tokens: int | None
     error: str | None
     extra_json: dict | None
+
+
+class CompareCell(BaseModel):
+    run_id: int
+    value: float | None
+    extra_json: dict | None
+
+
+class CompareRow(BaseModel):
+    dimension: str
+    name: str
+    unit: str | None
+    language: str | None
+    cells: list[CompareCell]
+
+
+class CompareResponse(BaseModel):
+    runs: list[RunSummary]
+    rows: list[CompareRow]
 
 
 class Page(BaseModel):

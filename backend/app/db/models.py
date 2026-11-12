@@ -34,6 +34,8 @@ class Model(Base):
     quantization: Mapped[str | None] = mapped_column(String(50))  # e.g. Q4_K_M, fp16
     params_b: Mapped[float | None] = mapped_column(Float)
     notes: Mapped[str | None] = mapped_column(Text)
+    # Optional host-side agent (scripts/resource_agent.py) that can see the server process.
+    resource_agent_url: Mapped[str | None] = mapped_column(String(500))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     runs: Mapped[list["Run"]] = relationship(back_populates="model")

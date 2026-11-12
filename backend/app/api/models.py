@@ -4,7 +4,7 @@ from sqlalchemy.exc import IntegrityError
 
 from app.db.models import Model, Run
 from app.db.session import SessionDep
-from app.schemas import ModelCreate, ModelRead
+from app.schemas import ModelCreate, ModelRead, ModelUpdate
 
 router = APIRouter(prefix="/models", tags=["models"])
 
@@ -35,6 +35,18 @@ async def get_model(model_id: int, session: SessionDep):
     model = await session.get(Model, model_id)
     if model is None:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Model not found")
+    return model
+
+
+@router.patch("/{model_id}", response_model=ModelRead)
+async def update_model(model_id: int, body: ModelUpdate, session: SessionDep):
+    model = await session.get(Model, model_id)
+    if model is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Model not found")
+    for key, value in body.model_dump(exclude_unset=True).items():
+        setattr(model, key, value)
+    await session.commit()
+    await session.refresh(model)
     return model
 
 

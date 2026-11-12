@@ -21,7 +21,8 @@ from app.backends.openai_compat import (
 )
 from app.config import get_settings
 from app.datasets.loader import load_items
-from app.db.models import Dataset, Model, ResultItem, Run
+from app.db.models import Dataset, Metric, Model, ResultItem, Run
+from app.evals.base import Eval, EvalContext
 from app.evals.mcq import (
     PROMPT_TEMPLATE_VERSION,
     MCQItem,
@@ -29,6 +30,7 @@ from app.evals.mcq import (
     parse_answer,
     render_prompt,
 )
+from app.evals.registry import default_evals
 
 log = logging.getLogger(__name__)
 
@@ -67,9 +69,14 @@ def _now() -> datetime:
 
 
 class RunExecutor:
-    def __init__(self, session_factory: async_sessionmaker[AsyncSession]):
+    def __init__(
+        self,
+        session_factory: async_sessionmaker[AsyncSession],
+        evals: dict[str, Eval] | None = None,
+    ):
         self._sf = session_factory
         self._tasks: dict[int, asyncio.Task] = {}
+        self._evals = evals if evals is not None else default_evals()
 
     # ---- lifecycle -----------------------------------------------------------------
 
@@ -148,19 +155,20 @@ class RunExecutor:
             try:
                 await client.ping()  # fail fast and clearly if the server is not there
                 await self._run_items(run_id, client, items, cfg)
+
+                n_errors = await self._count_errors(run_id)
+                if items and n_errors / len(items) > MAX_ERROR_FRACTION:
+                    await self._set_status(
+                        run_id,
+                        status="failed",
+                        finished_at=_now(),
+                        error=f"{n_errors}/{len(items)} requests failed after retry.",
+                    )
+                    return
+                await self._run_evals(run, model, dataset, items, client, cfg)
             finally:
                 await client.aclose()
-
-            n_errors = await self._count_errors(run_id)
-            if items and n_errors / len(items) > MAX_ERROR_FRACTION:
-                await self._set_status(
-                    run_id,
-                    status="failed",
-                    finished_at=_now(),
-                    error=f"{n_errors}/{len(items)} requests failed after retry.",
-                )
-            else:
-                await self._set_status(run_id, status="completed", finished_at=_now())
+            await self._set_status(run_id, status="completed", finished_at=_now())
         except asyncio.CancelledError:
             await self._set_status(
                 run_id, status="cancelled", finished_at=_now(), error="Cancelled by user."
@@ -171,6 +179,78 @@ class RunExecutor:
             await self._set_status(
                 run_id, status="failed", finished_at=_now(), error=f"{type(exc).__name__}: {exc}"
             )
+
+    async def _run_evals(
+        self,
+        run: Run,
+        model: Model,
+        dataset: Dataset,
+        items: list[MCQItem],
+        client: OpenAICompatClient,
+        cfg: RunConfig,
+    ) -> None:
+        """Run each requested dimension and store its metrics. One dimension failing is
+        recorded as a null metric with the error; it does not fail the run."""
+        async with self._sf() as session:
+            results = (
+                await session.scalars(
+                    select(ResultItem).where(ResultItem.run_id == run.id).order_by(ResultItem.id)
+                )
+            ).all()
+        ctx = EvalContext(
+            run=run,
+            model=model,
+            dataset=dataset,
+            items=items,
+            results=list(results),
+            client=client,
+            session_factory=self._sf,
+            seed=cfg.seed,
+            concurrency=cfg.concurrency,
+        )
+        for dim in cfg.dimensions:
+            evaluator = self._evals.get(dim)
+            if evaluator is None:
+                metrics = [
+                    Metric(
+                        run_id=run.id,
+                        dimension=dim,
+                        name=f"{dim}_error",
+                        value=None,
+                        extra_json={"error": "unknown dimension"},
+                    )
+                ]
+            else:
+                try:
+                    computed = await evaluator.run(ctx)
+                    metrics = [
+                        Metric(
+                            run_id=run.id,
+                            dimension=m.dimension,
+                            name=m.name,
+                            value=m.value,
+                            unit=m.unit,
+                            language=m.language,
+                            extra_json=m.extra,
+                        )
+                        for m in computed
+                    ]
+                except asyncio.CancelledError:
+                    raise
+                except Exception as exc:  # noqa: BLE001 - record and move on to the next dimension
+                    log.exception("Dimension %s failed for run %s", dim, run.id)
+                    metrics = [
+                        Metric(
+                            run_id=run.id,
+                            dimension=dim,
+                            name=f"{dim}_error",
+                            value=None,
+                            extra_json={"error": f"{type(exc).__name__}: {exc}"[:500]},
+                        )
+                    ]
+            async with self._sf() as session:
+                session.add_all(metrics)
+                await session.commit()
 
     async def _count_errors(self, run_id: int) -> int:
         async with self._sf() as session:
@@ -246,6 +326,7 @@ class RunExecutor:
                 "finish_reason": result.finish_reason if result else None,
                 "prompt_tokens": result.prompt_tokens if result else None,
                 "n_chunks": result.n_chunks if result else None,
+                "subject_category": item.subject_category,
             },
         )
         async with self._sf() as session:
