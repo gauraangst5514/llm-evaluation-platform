@@ -46,7 +46,7 @@ def fmt(kind: str, value: str, extra: dict) -> str:
 
 def main(paths: list[str]) -> None:
     rows: OrderedDict[tuple, dict] = OrderedDict()
-    for path in sorted(paths):
+    for path in paths:
         with open(path, newline="", encoding="utf-8") as f:
             for r in csv.DictReader(f):
                 # Resource metrics carry no language; the dataset name ends with the language code.
@@ -59,7 +59,9 @@ def main(paths: list[str]) -> None:
     header = ["Model", "Quant", "Lang", "Run"] + [c[1] for c in COLUMNS]
     print("| " + " | ".join(header) + " |")
     print("|" + "---|" * len(header))
-    for (model, quant, lang, run_id), metrics in rows.items():
+    # Run order is execution order (the pilot runs quantizations high to low, en/hi/bn).
+    ordered = sorted(rows.items(), key=lambda kv: int(kv[0][3]) if kv[0][3].isdigit() else 0)
+    for (model, quant, lang, run_id), metrics in ordered:
         cells = []
         for name, _title, kind in COLUMNS:
             value, extra = metrics.get(name, ("", {}))

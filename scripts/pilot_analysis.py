@@ -7,7 +7,8 @@ paired drop versus the highest-precision quantization, and fertility.
 Reads <prefix>_<quant>_<lang>_{metrics,items}.csv written by scripts/pilot_matrix.py.
 Because every quantization answered the *same* items, drops are computed on paired
 per-item correctness (discordant pairs), which is tighter than comparing two
-independent intervals. Stdlib only.
+independent intervals. Also writes <prefix>.csv: every metric row of every cell in
+one long-format file (the spec's results/pilot_<model>.csv). Stdlib only.
 """
 
 import csv
@@ -202,7 +203,34 @@ def main(prefix: str) -> None:
     )
 
 
+def write_combined(prefix: str) -> str:
+    """Concatenate the per-cell metrics exports, ordered by quant precision and language."""
+    order = {"en": 0, "hi": 1, "bn": 2}
+    paths = []
+    for path in glob.glob(f"{prefix}_*_metrics.csv"):
+        m = re.match(re.escape(prefix) + r"_(.+)_([a-z]{2})_metrics\.csv$", path)
+        if m:
+            quant = m.group(1).upper()
+            paths.append((-QUANT_RANK.get(quant, 0), order.get(m.group(2), 9), path))
+    out = f"{prefix}.csv"
+    header: list[str] | None = None
+    with open(out, "w", newline="", encoding="utf-8") as fh:
+        writer = csv.writer(fh)
+        for *_, path in sorted(paths):
+            with open(path, newline="", encoding="utf-8") as src:
+                reader = csv.reader(src)
+                head = next(reader)
+                if header is None:
+                    header = head
+                    writer.writerow(header)
+                elif head != header:
+                    sys.exit(f"{path}: header differs from the other exports")
+                writer.writerows(reader)
+    return out
+
+
 if __name__ == "__main__":
     if len(sys.argv) != 2:
         sys.exit(__doc__)
     main(sys.argv[1])
+    print(f"\nwrote {write_combined(sys.argv[1])}", file=sys.stderr)
